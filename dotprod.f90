@@ -32,7 +32,11 @@ integer :: me, np, i
 np = num_images()
 me = this_image()
 
-if ((.not. allocated(local_dots)) .or. (size(local_dots) /= np)) then
+if (.not. allocated(local_dots)) then
+    allocate(local_dots(np)[*])
+end if
+
+if (size(local_dots) /= np) then
     allocate(local_dots(np)[*])
 end if
 
@@ -55,12 +59,62 @@ real(8) function dot_gatherbcast(x, y)
 
 implicit none
 real(kind=8), dimension(:), intent(in) :: x, y
+real(kind=8), save, allocatable :: local_dots(:)[:]
+real(kind=8), save, allocatable :: results(:)
+
+integer :: me, np, i
 
 ! Your job: You can either define a coarray of dimension np and use put operations
 ! (as in the allgather variant), or you can define only a scalar coarray variable
 ! and an array on image 1, and then use 'get' operations.
 
-dot_gatherbcast = 0.d0
+np = num_images()
+me = this_image()
+
+if (.not. allocated(local_dots)) then
+    allocate(local_dots(1)[*])
+end if
+
+if (size(local_dots) /= 1) then
+    allocate(local_dots(1)[*])
+end if
+
+local_dots(1) = dot_product(x, y)
+
+if (.not. allocated(results)) then
+    allocate(results(np))
+end if
+
+if (size(results) /= np) then
+    allocate(results(np))
+end if
+
+if (me == 1) then
+    do i = 1,np
+        results(i) = local_dots(1)[i]
+    end do
+end if
+
+sync all
+
+if (me == 1) then
+    local_dots(1) = sum(results)
+    dot_gatherbcast = local_dots(1)
+end if
+
+sync all
+
+!if (me == 1) then
+!    do i = 2,np
+!        local_dots(1)[i] = local_dots(1)[me]
+!    end do
+!end if
+
+if (me /= 1) then
+    dot_gatherbcast = local_dots(1)[1]
+end if
+
+sync all
 
 end function dot_gatherbcast
 
